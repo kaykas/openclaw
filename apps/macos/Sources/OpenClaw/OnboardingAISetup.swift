@@ -249,7 +249,9 @@ final class OnboardingAISetupModel {
             // socket after the server already tested and persisted the model.
             // A transport error means "outcome unknown", not "failed": re-read
             // server state before reporting failure.
-            if await self.reconcileActivationAfterTransportDrop(kind: kind, token: token) { return }
+            if await self.reconcileActivationAfterTransportDrop(kind: kind, token: token) {
+                return
+            }
             guard token == self.attemptToken else { return }
             self.statuses[kind] = .failed(message: Self.friendlyTransportError(error.localizedDescription))
             await self.tryNextAfterFailure(of: kind)
@@ -468,7 +470,10 @@ struct OnboardingAISetupView: View {
         if self.model.exhaustedAutoCandidates, !self.model.connected {
             OnboardingErrorCard(
                 title: "None of the found options worked",
-                message: "The details are listed on each option above. You can fix the login and retry, or connect with an API key or token below.",
+                message: """
+                The details are listed on each option above. \
+                You can fix the login and retry, or connect with an API key or token below.
+                """,
                 docsSlug: "concepts/model-providers",
                 retryTitle: "Check again")
             {
