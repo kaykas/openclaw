@@ -755,7 +755,7 @@ describe("ci workflow guards", () => {
     expect(restoreStep.with.path).toContain("dist-runtime/");
     expect(restoreStep.with.path).toContain("packages/*/dist/");
     expect(saveStep.with.path).toContain("packages/*/dist/");
-    expect(restoreStep.with.key).toContain("dist-build-v2-");
+    expect(restoreStep.with.key).toContain("dist-build-v3-");
     expect(
       buildArtifactSteps.find((step) => step.name === "Pack built runtime artifacts").run,
     ).toContain("packages/*/dist");
@@ -1070,12 +1070,32 @@ describe("ci workflow guards", () => {
       throw new Error("taxonomy.yaml is missing the smoke-ci profile");
     }
     const fastCoreJob = workflow.jobs["checks-fast-core"];
+    const smokeArtifactsJob = workflow.jobs["qa-smoke-ci-artifacts"];
+    const smokeBuildStep = smokeArtifactsJob.steps.find(
+      (step) => step.name === "Build QA smoke runtime",
+    );
+    const smokePackageStep = smokeArtifactsJob.steps.find(
+      (step) => step.name === "Pack QA smoke artifacts",
+    );
+    const smokePackageUploadStep = smokeArtifactsJob.steps.find(
+      (step) => step.name === "Upload QA smoke package",
+    );
+    const smokeRuntimeUploadStep = smokeArtifactsJob.steps.find(
+      (step) => step.name === "Upload QA smoke runtime",
+    );
     const runStep = fastCoreJob.steps.find(
       (step) => step.name === "Run ${{ matrix.task }} (${{ matrix.runtime }})",
     );
     const smokeShardJob = workflow.jobs["qa-smoke-ci-shard"];
-    const smokeRunStep = smokeShardJob.steps.find(
-      (step) => step.name === "Run smoke profile shard",
+    const smokeRunStep = smokeShardJob.steps.find((step) => step.name === "Run smoke profile part");
+    const smokePackageDownloadStep = smokeShardJob.steps.find(
+      (step) => step.name === "Download QA smoke package",
+    );
+    const runtimeDownloadStep = smokeShardJob.steps.find(
+      (step) => step.name === "Download built runtime artifacts",
+    );
+    const runtimeExtractStep = smokeShardJob.steps.find(
+      (step) => step.name === "Extract built runtime artifacts",
     );
     const smokeUploadStep = smokeShardJob.steps.find(
       (step) => step.name === "Upload QA smoke profile evidence",
@@ -1096,23 +1116,45 @@ describe("ci workflow guards", () => {
     expect(runStep.run).toContain("ci-routing)");
     expect(fastCoreJob["runs-on"]).toContain("matrix.runner");
     expect(smokeShardJob.name).toBe("QA Smoke CI (${{ matrix.name }})");
-    expect(smokeShardJob.strategy["max-parallel"]).toBe(4);
+    expect(smokeArtifactsJob.name).toBe("QA Smoke CI (prepare profile)");
+    expect(smokeBuildStep.run).toContain("node scripts/build-all.mjs qaRuntime");
+    expect(smokeBuildStep.run).toContain("pnpm ui:build");
+    expect(smokeBuildStep.env.OPENCLAW_BUILD_PRIVATE_QA).toBe("1");
+    expect(smokePackageStep.run).toContain("--skip-build");
+    expect(smokePackageStep.run).toContain("packages/*/dist");
+    expect(smokePackageUploadStep.with).toMatchObject({
+      name: "qa-smoke-package",
+      path: ".artifacts/qa-e2e/smoke-ci-package/openclaw-current.tgz",
+    });
+    expect(smokeRuntimeUploadStep.with).toMatchObject({
+      name: "qa-smoke-runtime",
+      path: "qa-smoke-runtime.tar.zst",
+    });
+    expect(smokeShardJob.needs).toEqual(["preflight", "qa-smoke-ci-artifacts"]);
+    expect(smokeShardJob.strategy["max-parallel"]).toBe(2);
     expect(smokeShardJob.strategy.matrix.include.map((entry) => entry.slug)).toEqual([
-      "matrix",
-      "crabline-1-of-3",
-      "crabline-2-of-3",
-      "crabline-3-of-3",
+      "profile-1-of-2",
+      "profile-2-of-2",
     ]);
     expect(smokeShardJob["runs-on"]).toContain("blacksmith-16vcpu-ubuntu-2404");
-    expect(smokeRunStep.run).toContain("createQaSmokeCiShard");
+    expect(smokePackageDownloadStep.with).toMatchObject({
+      name: "qa-smoke-package",
+      path: ".artifacts/qa-e2e/smoke-ci-package",
+    });
+    expect(runtimeDownloadStep.with.name).toBe("qa-smoke-runtime");
+    expect(runtimeExtractStep.run).toContain("qa-smoke-runtime.tar.zst");
+    expect(smokeRunStep.run).toContain("createQaSmokeCiPart");
+    expect(smokeRunStep.run).toContain("node openclaw.mjs qa run");
+    expect(smokeRunStep.run).not.toContain("pnpm openclaw qa run");
     expect(smokeRunStep.run).toContain("--qa-profile smoke-ci");
     expect(smokeRunStep.run).toContain("--concurrency 8");
     expect(smokeRunStep.run).toContain('scenario_args+=(--scenario "$scenario_id")');
+    expect(smokeRunStep.run).toContain('done <<< "$PROFILE_RUNS_TSV"');
     expect(smokeRunStep.run).not.toContain("--category");
     expect(smokeRunStep.run).not.toContain("--allow-failures");
     expect(smokeRunStep.run).toContain("qa_exit_code=0");
     expect(smokeRunStep.run).toContain('exit "$qa_exit_code"');
-    expect(smokeRunStep.run).toContain("scripts/package-openclaw-for-docker.mjs");
+    expect(smokeRunStep.run).not.toContain("scripts/package-openclaw-for-docker.mjs");
     expect(smokeRunStep.run).toContain("OPENCLAW_CURRENT_PACKAGE_TGZ");
     expect(smokeRunStep.run).toContain("--max-old-space-size=16384");
     expect(smokeRunStep.run).not.toContain("scripts/build-all.mjs qaRuntime");
