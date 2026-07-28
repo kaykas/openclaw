@@ -37,6 +37,7 @@ import {
   getEnvApiKey,
   getFirstStreamEventTimeoutHandler,
   getFirstStreamEventTimeoutMs,
+  parseCompletedToolCallJson,
   parseStreamingJson,
   withFirstStreamEventTimeout,
 } from "@openclaw/ai/internal/runtime";
@@ -1512,11 +1513,12 @@ async function processResponsesStream(
     });
   };
   const appendCompletedResponseToolCallItem = (item: Record<string, unknown>) => {
-    const args = parseStreamingJson(stringifyJsonLike(item.arguments, "{}"));
+    const toolName = stringifyUnknown(item.name);
+    const args = parseCompletedToolCallJson(stringifyJsonLike(item.arguments, "{}"), toolName);
     const block = {
       type: "toolCall",
       id: `${stringifyUnknown(item.call_id)}|${stringifyUnknown(item.id)}`,
-      name: stringifyUnknown(item.name),
+      name: toolName,
       arguments: args,
       partialJson: stringifyJsonLike(item.arguments, "{}"),
     };
@@ -1749,17 +1751,18 @@ async function processResponsesStream(
         }
         currentBlock = null;
       } else if (item.type === "function_call") {
+        const fnName = stringifyUnknown(item.name);
         const args =
           currentBlock?.type === "toolCall" && currentBlock.partialJson
-            ? parseStreamingJson(stringifyJsonLike(currentBlock.partialJson, "{}"))
-            : parseStreamingJson(stringifyJsonLike(item.arguments, "{}"));
+            ? parseCompletedToolCallJson(stringifyJsonLike(currentBlock.partialJson, "{}"), fnName)
+            : parseCompletedToolCallJson(stringifyJsonLike(item.arguments, "{}"), fnName);
         stream.push({
           type: "toolcall_end",
           contentIndex: blockIndex(),
           toolCall: {
             type: "toolCall",
             id: `${stringifyUnknown(item.call_id)}|${stringifyUnknown(item.id)}`,
-            name: stringifyUnknown(item.name),
+            name: fnName,
             arguments: args,
           },
           partial: output,
@@ -2876,12 +2879,15 @@ async function processOpenAICompletionsStream(
       return;
     }
     if (currentBlock.type === "toolCall") {
-      currentBlock.arguments = parseStreamingJson(currentBlock.partialArgs);
+      currentBlock.arguments = parseCompletedToolCallJson(
+        currentBlock.partialArgs,
+        currentBlock.name,
+      );
     }
   };
   const finishAllToolCallBlocks = () => {
     for (const block of toolCallBlocksByIndex.values()) {
-      block.arguments = parseStreamingJson(block.partialArgs);
+      block.arguments = parseCompletedToolCallJson(block.partialArgs, block.name);
     }
   };
   const queuePostToolCallDelta = (next: CompletionsReasoningDelta) => {

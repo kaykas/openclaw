@@ -38,6 +38,7 @@ import {
   createDeferredEventBuffer,
   getEnvApiKey,
   notifyLlmRequestActivity,
+  parseCompletedToolCallJson,
   parseStreamingJson,
 } from "@openclaw/ai/internal/runtime";
 import {
@@ -618,6 +619,17 @@ function convertAnthropicTools(tools: Context["tools"], isOAuthToken: boolean) {
 
 function parseAnthropicToolCallArguments(inputJson: string): unknown {
   return parseJsonObjectPreservingUnsafeIntegers(inputJson) ?? parseStreamingJson(inputJson);
+}
+
+/**
+ * Final-frame variant of parseAnthropicToolCallArguments used at content_block_stop.
+ * Falls back to parseCompletedToolCallJson so unrecoverable payloads emit a single warn.
+ */
+function parseAnthropicFinalToolCallArguments(inputJson: string, toolName?: string): unknown {
+  return (
+    parseJsonObjectPreservingUnsafeIntegers(inputJson) ??
+    parseCompletedToolCallJson(inputJson, toolName)
+  );
 }
 
 function mapStopReason(reason: string | undefined): string {
@@ -1735,7 +1747,11 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
             }
             if (block.type === "toolCall") {
               if (typeof block.partialJson === "string" && block.partialJson.length > 0) {
-                block.arguments = parseAnthropicToolCallArguments(block.partialJson);
+                // Use the final-frame variant so unrecoverable payloads emit a single warn.
+                block.arguments = parseAnthropicFinalToolCallArguments(
+                  block.partialJson,
+                  typeof block.name === "string" ? block.name : undefined,
+                );
               }
               delete block.partialJson;
               eventSink.push({

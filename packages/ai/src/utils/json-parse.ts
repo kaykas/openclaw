@@ -151,3 +151,40 @@ export function parseStreamingJson(partialJson: string | undefined): Record<stri
     }
   }
 }
+
+/**
+ * Parse the final, complete tool-call JSON at frame-end (toolcall_end / content_block_stop).
+ * Unlike parseStreamingJson — which is called on every streaming delta — this variant is
+ * intended for the single, definitive parse once the provider signals the end of the block.
+ *
+ * When all recovery strategies return an empty object for a non-trivial object-like payload,
+ * it emits a single console.warn so the failure is traceable without surfacing a user-visible
+ * error.  Fail-closed behaviour is preserved: the function always returns a valid object.
+ *
+ * @param json The fully-assembled tool-call JSON string
+ * @param toolName Optional tool name for the warning message
+ * @returns Parsed object or empty object if unrecoverable
+ */
+export function parseCompletedToolCallJson(
+  json: string | undefined,
+  toolName?: string,
+): Record<string, unknown> {
+  const result = parseStreamingJson(json);
+  // Only emit a warning when the assembled final payload looks like it SHOULD have produced
+  // keys (non-empty object shape with a key–value separator) but all strategies gave up.
+  if (
+    json &&
+    Object.keys(result).length === 0 &&
+    json.trimStart().startsWith("{") &&
+    json.trim() !== "{}" &&
+    json.includes(":")
+  ) {
+    const preview = json.length > 120 ? `${json.slice(0, 120)}…` : json;
+    console.warn(
+      `[json-parse] tool-call${
+        toolName ? ` ${toolName}` : ""
+      } JSON unrecoverable at frame end (${json.length} chars); returning {}. Preview: ${preview}`,
+    );
+  }
+  return result;
+}
