@@ -124,16 +124,29 @@ describe("parseStreamingJson delta-accumulation contract", () => {
     // (frame-complete) when all strategies produced nothing from a non-trivial payload.
     // partial-json never throws for object-like inputs: it returns {} silently.
     // parseCompletedToolCallJson detects this case and logs once.
-    const corrupt = '{"key": GARBAGE_VALUE_NO_PARSE}';
+    //
+    // SECURITY: embed a sentinel secret in the payload to verify the warning
+    // never echoes payload content — only safe metadata is logged.
+    const SENTINEL_SECRET = "sk-api-SENTINEL_DO_NOT_LOG_7f3a9c";
+    const corrupt = `{"key": GARBAGE_VALUE_NO_PARSE, "token": "${SENTINEL_SECRET}"}`;
 
     const result = parseCompletedToolCallJson(corrupt, "unified_memory_remember");
     expect(result).toEqual({});
+
     // Warn fires exactly once, not silently swallowed.
     expect(warnSpy).toHaveBeenCalledTimes(1);
     const warnMsg = warnSpy.mock.calls[0][0] as string;
+
+    // Safe metadata IS present.
     expect(warnMsg).toContain("[json-parse]");
     expect(warnMsg).toContain("unrecoverable");
     expect(warnMsg).toContain("unified_memory_remember");
+    expect(warnMsg).toContain(`byteLength=${corrupt.length}`);
+
+    // Payload content is NEVER included — credentials must not leak into logs.
+    expect(warnMsg).not.toContain(SENTINEL_SECRET);
+    expect(warnMsg).not.toContain("GARBAGE_VALUE_NO_PARSE");
+    expect(warnMsg).not.toContain("token");
   });
 
   it("parseCompletedToolCallJson: does not warn for a valid empty-object payload {}", () => {

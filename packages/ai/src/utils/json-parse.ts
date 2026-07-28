@@ -161,6 +161,10 @@ export function parseStreamingJson(partialJson: string | undefined): Record<stri
  * it emits a single console.warn so the failure is traceable without surfacing a user-visible
  * error.  Fail-closed behaviour is preserved: the function always returns a valid object.
  *
+ * SECURITY: The warning intentionally logs only safe metadata (tool name, byte length,
+ * failure class).  Payload content is never included — tool-call arguments can contain
+ * credentials, PII, or other sensitive data.
+ *
  * @param json The fully-assembled tool-call JSON string
  * @param toolName Optional tool name for the warning message
  * @returns Parsed object or empty object if unrecoverable
@@ -179,11 +183,11 @@ export function parseCompletedToolCallJson(
     json.trim() !== "{}" &&
     json.includes(":")
   ) {
-    const preview = json.length > 120 ? `${json.slice(0, 120)}…` : json;
+    // Log safe metadata only — never echo payload content.
     console.warn(
       `[json-parse] tool-call${
         toolName ? ` ${toolName}` : ""
-      } JSON unrecoverable at frame end (${json.length} chars); returning {}. Preview: ${preview}`,
+      } JSON unrecoverable at frame end; byteLength=${json.length} failureClass=parse_all_strategies_failed`,
     );
   }
   return result;
