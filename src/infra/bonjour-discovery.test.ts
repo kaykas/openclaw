@@ -380,4 +380,35 @@ describe("bonjour-discovery", () => {
     expect(calls.reduce((count, c) => count + (c[1] === "-B" ? 1 : 0), 0)).toBe(1);
     expect(calls.find((c) => c[1] === "-B")?.[3]).toBe("local.");
   });
+
+  it("wide-area discovery does not throw when tailscale status returns plain-text (not json)", async () => {
+    // Regression: parseTailscaleStatusIPv4s must not throw on non-JSON subprocess output.
+    const run = vi.fn(async (argv: string[]) => {
+      if (argv[0] === "dns-sd") {
+        // No DNS-SD beacons found, triggering tailnet wide-area fallback.
+        return { stdout: "", stderr: "", code: 0, signal: null, killed: false };
+      }
+      if (argv[0] === "tailscale" && argv[1] === "status") {
+        // Tailscale returns plain text instead of JSON.
+        return {
+          stdout: "not json",
+          stderr: "",
+          code: 0,
+          signal: null,
+          killed: false,
+        };
+      }
+      return { stdout: "", stderr: "", code: 0, signal: null, killed: false };
+    });
+
+    // Must resolve (not throw) and return empty beacons.
+    const beacons = await discoverGatewayBeacons({
+      platform: "darwin",
+      timeoutMs: 500,
+      domains: [WIDE_AREA_DOMAIN],
+      wideAreaDomain: WIDE_AREA_DOMAIN,
+      run: run as unknown as typeof runCommandWithTimeout,
+    });
+    expect(beacons).toEqual([]);
+  });
 });

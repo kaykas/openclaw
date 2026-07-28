@@ -299,7 +299,17 @@ export async function hasTailscaleFunnelRouteForPort(
   } catch {
     return false;
   }
-  const parsed = stdout ? parsePossiblyNoisyJsonObject(stdout) : {};
+  // Subprocess may return plain text (warnings, permission errors) instead of JSON.
+  // Treat non-JSON output as "funnel not configured" rather than propagating a SyntaxError.
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = stdout ? parsePossiblyNoisyJsonObject(stdout) : {};
+  } catch (e) {
+    logVerbose(
+      `JSON.parse failed on tailscale funnel status output (non-JSON): ${stdout.slice(0, 200)}`,
+    );
+    return false;
+  }
   return tailscaleFunnelStatusCoversPort(parsed, port);
 }
 

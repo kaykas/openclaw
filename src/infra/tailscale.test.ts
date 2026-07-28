@@ -263,12 +263,21 @@ describe("tailscale helpers", () => {
     await expect(hasTailscaleFunnelRouteForPort(18789, exec)).resolves.toBe(true);
   });
 
-  it("hasTailscaleFunnelRouteForPort preserves malformed status parse failures", async () => {
+  it("hasTailscaleFunnelRouteForPort returns false for malformed/non-JSON subprocess output", async () => {
     const exec = vi.fn().mockResolvedValue({
       stdout: "warning: stale state\n{not json}\n",
     });
 
-    await expect(hasTailscaleFunnelRouteForPort(18789, exec)).rejects.toThrow(SyntaxError);
+    // Non-JSON subprocess output must not throw; returns false gracefully.
+    await expect(hasTailscaleFunnelRouteForPort(18789, exec)).resolves.toBe(false);
+  });
+
+  it("hasTailscaleFunnelRouteForPort returns false for pure plain-text subprocess output", async () => {
+    const exec = vi.fn().mockResolvedValue({
+      stdout: "not json",
+    });
+
+    await expect(hasTailscaleFunnelRouteForPort(18789, exec)).resolves.toBe(false);
   });
 });
 
