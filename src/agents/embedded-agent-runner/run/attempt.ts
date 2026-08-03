@@ -5690,6 +5690,25 @@ export async function runEmbeddedAttempt(
         }
       }
 
+      // Sol session-cache probe (phase 1): record per-turn fingerprints and
+      // numeric metadata for openai-chatgpt-responses sessions. No raw prompt,
+      // session key, or cache key content is emitted — only hashes, fingerprints,
+      // and counts. No-ops when the last stream was not a Sol transport call.
+      cacheTrace?.recordSolTurnProbeIfActive({
+        usage: attemptUsage,
+        compactionOccurredThisAttempt,
+        compactionCount: getCompactionCount(),
+        activeProcessSessions: listActiveProcessSessionReferences({
+          scopeKey: resolveProcessToolScopeKey({
+            sessionKey: sandboxSessionKey,
+            agentId: sessionAgentId,
+          }),
+        }),
+        sessionKey: params.sessionKey,
+        sessionId: params.sessionId,
+        fallbackReason: params.fallbackReason ?? null,
+      });
+
       if (
         hookRunner?.hasHooks("llm_output") &&
         shouldRunLlmOutputHooksForAttempt({ promptErrorSource })
