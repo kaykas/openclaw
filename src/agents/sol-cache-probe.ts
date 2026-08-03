@@ -15,13 +15,19 @@ import type { NormalizedUsage } from "./usage.js";
 /** The API transport string for Sol (openai-chatgpt-responses). */
 export const SOL_TRANSPORT_API = "openai-chatgpt-responses";
 
+// Real Sol traffic resolves model.api to "openai-responses", a distinct
+// value the rest of the codebase already treats as a sibling of
+// "openai-chatgpt-responses" everywhere else. isSolTransport previously
+// matched SOL_TRANSPORT_API only and missed real Sol traffic entirely
+// (found during the 2026-08-02 cache probe). Match both.
+const SOL_TRANSPORT_APIS = new Set(["openai-chatgpt-responses", "openai-responses"]);
+
 /**
  * Returns true when the model API is the Sol transport.
  * Matches case-insensitively to survive provider-object normalization.
  */
 export function isSolTransport(modelApi: string | null | undefined): boolean {
-  return typeof modelApi === "string" &&
-    modelApi.toLowerCase() === SOL_TRANSPORT_API;
+  return typeof modelApi === "string" && SOL_TRANSPORT_APIS.has(modelApi.toLowerCase());
 }
 
 function sha256Hex(value: string): string {
@@ -154,12 +160,8 @@ export function buildSolContextProbeData(params: {
   provider: string | undefined;
   modelId: string | undefined;
 }): SolTurnProbeData {
-  const { stablePrefixHash, fullInstructionsHash } = computeInstructionHashes(
-    params.systemPrompt,
-  );
-  const cacheKeyFingerprint = fingerprintSessionKey(
-    params.sessionKey ?? params.sessionId,
-  );
+  const { stablePrefixHash, fullInstructionsHash } = computeInstructionHashes(params.systemPrompt);
+  const cacheKeyFingerprint = fingerprintSessionKey(params.sessionKey ?? params.sessionId);
   return {
     stablePrefixHash,
     fullInstructionsHash,

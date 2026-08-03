@@ -11,8 +11,9 @@
  *     present in any sol:turn-probe JSONL event.
  */
 import crypto from "node:crypto";
-import { describe, expect, it, afterEach } from "vitest";
 import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "@openclaw/ai/internal/shared";
+import { describe, expect, it, afterEach } from "vitest";
+import { createCacheTrace } from "./cache-trace.js";
 import {
   computeInstructionHashes,
   fingerprintSessionKey,
@@ -23,7 +24,6 @@ import {
   buildSolTurnTokenResult,
   SOL_TRANSPORT_API,
 } from "./sol-cache-probe.js";
-import { createCacheTrace } from "./cache-trace.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -180,11 +180,9 @@ describe("sol:turn-probe JSONL event redaction", () => {
     const fullPrompt = `${stablePrompt}${SYSTEM_PROMPT_CACHE_BOUNDARY}ts=2026-08-02T10:00:00Z`;
 
     // Simulate a Sol stream call to capture context data.
-    trace.wrapStreamFn(
-      ((_model: unknown, _context: unknown, _options: unknown) => {
-        return { text: "ignored" } as never;
-      }) as never,
-    )(
+    trace.wrapStreamFn(((_model: unknown, _context: unknown, _options: unknown) => {
+      return { text: "ignored" } as never;
+    }) as never)(
       { id: "gpt-5.6-sol", provider: "openai", api: SOL_TRANSPORT_API } as never,
       { systemPrompt: fullPrompt } as never,
       {},
@@ -420,8 +418,12 @@ describe("isSolTransport", () => {
     expect(isSolTransport("OPENAI-CHATGPT-RESPONSES")).toBe(true);
   });
 
+  it("returns true for openai-responses (real Sol production transport value)", () => {
+    expect(isSolTransport("openai-responses")).toBe(true);
+    expect(isSolTransport("OpenAI-Responses")).toBe(true);
+  });
+
   it("returns false for other transports", () => {
-    expect(isSolTransport("openai-responses")).toBe(false);
     expect(isSolTransport("anthropic")).toBe(false);
     expect(isSolTransport("openai-completions")).toBe(false);
     expect(isSolTransport(null)).toBe(false);
